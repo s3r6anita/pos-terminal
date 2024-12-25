@@ -354,7 +354,7 @@ int8_t PN5180ISO14443::readCardSerial(uint8_t *buffer) {
     delay(100);
 
     uint8_t selectGPO[] = {0x80, 0xA8, 0x00, 0x00, 0x02, 0x83, 0x00};
-//    uint8_t selectGPO[] = {0x80, 0xA8, 0x00, 0x00, 0x04, 0x83, 0x02, 0x83,  0x00};
+    uint8_t* data = nullptr;
 
 	if (sendAPDUwithHalfDuplexBlock(selectGPO, sizeof(selectGPO))) {
     	Serial.println(F("APDU selectGPO sent successfully using I-Block"));
@@ -363,23 +363,98 @@ int8_t PN5180ISO14443::readCardSerial(uint8_t *buffer) {
 	}
 
 	uint8_t apduResponse2[256];
-	uint8_t responseLength2 = 0;
+	responseLength = 0;
 
     delay(25);
 
-	if (receiveAPDUResponse(apduResponse2, responseLength2)) {
-    	Serial.println(F("APDU response selectGPO received successfully"));
-	} else {
-    	Serial.println(F("Failed to receive APDU selectGPO response"));
-	}
+    uint8_t* afl = nullptr;
 
+if (receiveAPDUResponse(apduResponse2, responseLength)) {
+    uint8_t* response = apduResponse2;
+
+
+    Serial.println(F("GPO successfully gotten"));
+
+
+
+    // Искать тег 94
+    uint8_t i = 2; // Пропускаем первые 2 байта
+    if (response[i] == 0x77) {
+        i += 2; // Переход к данным внутри Response Message Template Format 2
+        while (i < responseLength) {
+            uint8_t tag = response[i];       // Текущий тег
+            uint8_t length = response[i + 1]; // Длина данных для текущего тега
+            if (tag == 0x94) {
+                // Тег 94 найден, обрабатываем его значение
+                uint8_t aflLength = length; // Длина AFL
+                for (uint8_t j = 0; j < aflLength; j += 4) {
+                    uint8_t sfi = response[i + 2 + j] >> 3; // SFI
+                    uint8_t startRecord = response[i + 2 + j + 1]; // Первая запись
+                    uint8_t endRecord = response[i + 2 + j + 2];   // Последняя запись
+                    uint8_t numRecords = response[i + 2 + j + 3];  // Количество записей
+
+                    if (numRecords != 0) {
+                        data = &response[i + 2 + j]; // Устанавливаем указатель на AFL
+                        Serial.print(F("Found AFL: "));
+                        for (uint8_t k = 0; k < 4; k++) {
+                            Serial.print(response[i + 2 + j + k], HEX);
+                            Serial.print(" ");
+                        }
+                        Serial.println();
+                        break;
+                    }
+                }
+                break; // Завершаем обработку после нахождения 94
+            } else {
+                // Переход к следующему тегу
+                i += 2 + length; // Переход на следующий тег
+            }
+        }
+    } else {
+        Serial.println(F("Cannot find tag of Message Template Format 2"));
+    }
+} else {
+    Serial.println(F("Failed to receive APDU selectGPO response"));
+}
 
 
     Serial.println();
     delay(100);
 
-    findCardholderName();
 
+    uint8_t response3[256];
+    uint8_t responseLen = 0;
+
+	if (data != nullptr) {
+    	// запрос данных из областей в которых находятся необходимые для транзакции данные
+    	uint8_t readRecordsRequest[] = {0x00, 0xB2, data[1], data[0] | 0x04, 0x00};
+
+        for (size_t i = 0; i < 5; i++) {
+            Serial.print(readRecordsRequest[i], HEX);
+            Serial.print(" ");
+        }
+
+            Serial.println();
+    	if (sendAPDUwithHalfDuplexBlock(readRecordsRequest, sizeof(readRecordsRequest))) {
+    		delay(100);
+    	} else {
+			Serial.println(F("Failed Read Record"));
+		}
+
+        if (receiveAPDUResponse(response3, responseLen)) {
+            Serial.println();
+            Serial.print("Read Record response: ");
+          	for (uint8_t i = 0; i < responseLength; i++) {
+                Serial.print(response3[i], HEX);
+            	Serial.print(" ");
+            }
+            Serial.println();
+		} else {
+            Serial.print("Read Record receive error");
+        }
+    } else {
+    	Serial.println(F("Failed to get Application File Locator"));
+    }
 
 
 
@@ -488,7 +563,7 @@ uint8_t currentBlockNumber = 0; // Начинается с 0 после акти
 bool PN5180ISO14443::sendAPDUwithHalfDuplexBlock(uint8_t* apdu, size_t apduLen) {
 
   // временно поменял на 64, чтобы не тратить лишнюю память
-    const uint8_t FSC = 64; // (Frame Size for proximity Card) соответствует установленному FSD = 256 bytes
+    const uint8_t FSC = 255; // (Frame Size for proximity Card) соответствует установленному FSD = 256 bytes
     uint8_t pcb = 0x0A | currentBlockNumber;     // PCB для I-Block с CID following
     uint8_t cid = 0x00;     // будем считать, что ATS всегда возвращает CID=0b0000
 
@@ -523,11 +598,11 @@ bool PN5180ISO14443::sendAPDUwithHalfDuplexBlock(uint8_t* apdu, size_t apduLen) 
         offset += frameSize;
 
 //        // Устанавливаем флаг цепочки (Chaining Flag) в PCB, если есть оставшиеся данные
-//        if (offset < apduLen) {
-//            pcb |= 0x10; // Устанавливаем флаг цепочки (More Data Bit)
-//        } else {
-//            pcb &= ~0x10; // Сбрасываем флаг цепочки
-//        }
+        if (offset < apduLen) {
+            pcb |= 0x10; // Устанавливаем флаг цепочки (More Data Bit)
+        } else {
+            pcb &= ~0x10; // Сбрасываем флаг цепочки
+        }
     }
 
 	currentBlockNumber ^= 1;
