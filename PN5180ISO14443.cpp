@@ -447,6 +447,7 @@ if (receiveAPDUResponse(apduResponse2, responseLength)) {
           	for (uint8_t i = 0; i < responseLength; i++) {
                 Serial.print(response3[i], HEX);
             	Serial.print(" ");
+//                UART_Transmit(response3[i])
             }
             Serial.println();
 		} else {
@@ -673,46 +674,6 @@ bool PN5180ISO14443::receiveAPDUResponse(uint8_t* response, uint8_t& responseLen
     }
 }
 
-void PN5180ISO14443::findCardholderName() {
-    uint8_t response[256];
-    uint8_t responseLen = 0;
-
-    // SFI = 2, запись 1
-	// вернула 5A = PAN = 5228600562170292
-	// вернула 5F 24 = Application Expiration Date = 26 10 31 (31 октября 2026 года)
-    uint8_t readRecordSFI2[] = {0x00, 0xB2, 0x01, (0x02 << 3) | 0x04, 0x00};
-//    uint8_t readRecordSFI2[] = {0x00, 0xB2, 0x01, (0x10 + 0x04), 0x00};
-
-    // вернул AIP
-//    uint8_t readRecordSFI2[] = {0x00, 0xB2, 0x01, (0x08 + 0x04), 0x00};
-
-    // ничего полезного не вернул
-//    uint8_t readRecordSFI2[] = {0x00, 0xB2, 0x02, (0x18 + 0x04), 0x00};
-
-    // ничего полезного не вернул
-//    uint8_t readRecordSFI2[] = {0x00, 0xB2, 0x01, (0x20 + 0x04), 0x00};
-
-
-    if (sendAPDUwithHalfDuplexBlock(readRecordSFI2, sizeof(readRecordSFI2))) {
-    	delay(25);
-		if (receiveAPDUResponse(response, responseLen)) {
-        	Serial.println(F("Record read successfully (SFI = 2, Record 1)"));
-        	// Искать тег 5F20
-        	for (int i = 0; i < responseLen; i++) {
-            	if (response[i] == 0x5F && response[i + 1] == 0x20) {
-                	uint8_t nameLength = response[i + 2];
-                	Serial.print(F("Cardholder Name: "));
-                	for (int j = 0; j < nameLength; j++) {
-                    	Serial.print((char)response[i + 3 + j]);
-                	}
-                	Serial.println();
-                	return; // Имя найдено, выходим
-            	}
-        	}
-		}
-    }
-    Serial.println(F("Failed to read record (SFI = 2, Record 1)"));
-}
 
 
 

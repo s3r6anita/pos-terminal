@@ -227,30 +227,3 @@ void showIRQStatus(uint32_t irqStatus) {
   if (irqStatus & (1<<19)) Serial.print(F("LPCD "));
   Serial.println("]");
 }
-
-void parseCardData(uint8_t* data, int length) {
-  Serial.println(F("Parsing card data..."));
-
-  for (int i = 0; i < length; i++) {
-      if (data[i] == 0x5A) { // PAN
-          uint8_t panLength = data[i + 1];
-          Serial.print(F("Primary Account Number (PAN): "));
-          for (int j = 0; j < panLength; j++) {
-              Serial.print(data[i + 2 + j], HEX);
-              if (j % 2 == 1 && j != panLength - 1) {
-                  Serial.print(F(" "));
-              }
-          }
-          Serial.println();
-      } else if (data[i] == 0x5F) { // Application Label
-          if (data[i + 1] == 0x20) {
-              uint8_t labelLength = data[i + 2];
-              Serial.print(F("Application Label: "));
-              for (int j = 0; j < labelLength; j++) {
-                  Serial.print((char)data[i + 3 + j]);
-              }
-              Serial.println();
-          }
-      }
-  }
-}
